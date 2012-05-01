@@ -58,7 +58,7 @@ def get_bindinfo(user=''):
             bindpw = None
         secrets[user] = {
             'binddn': binddn,
-            'bindpw': base64.encodestring(bindpw),
+            'bindpw': bindpw and base64.encodestring(bindpw),
         }
     if conf != conf0:
         json.dump(conf, open(conf_name, 'w'), indent=2)
