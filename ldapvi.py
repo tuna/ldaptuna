@@ -2,7 +2,7 @@
 import os
 import sys
 from subprocess import check_call, CalledProcessError
-from optparse import OptionParser
+from argparse import ArgumentParser
 from tempfile import mkstemp
 from getpass import getpass
 from pprint import pprint
@@ -209,33 +209,26 @@ def main():
         ('-W', '--askpw'),
     ]
 
-    parser = OptionParser()
+    parser = ArgumentParser()
     for t in stropts:
-        parser.add_option(*t, type='string')
+        parser.add_argument(*t, type=str)
     for t in boolopts:
-        parser.add_option(*t, action='store_true', default=False)
-    parser.add_option('-s', '--scope',
-                      type='choice', choices=scopes.keys(), default='sub')
+        parser.add_argument(*t, action='store_true', default=False)
+    parser.add_argument('-s', '--scope', type=str,
+                        choices=scopes.keys(), default='sub')
+    parser.add_argument('filterstr', nargs='?', default='')
 
-    opts, args = parser.parse_args(sys.argv[1:])
-
-    if len(args) == 0:
-        filterstr = ''
-    elif len(args) == 1:
-        filterstr = args[0]
-    else:
-        print('Only one argument, the filter, is accepted')
-        exit('cmdline')
+    args = parser.parse_args()
 
     for opt in 'uri', 'binddn', 'base':
-        if not getattr(opts, opt):
-            setattr(opts, opt, raw_input('%s? ' % opt))
+        if not getattr(args, opt):
+            setattr(args, opt, raw_input('%s? ' % opt))
 
-    if opts.askpw:
-        opts.bindpw = getpass()
+    if args.askpw:
+        args.bindpw = getpass()
 
-    exit(start(opts.uri, opts.binddn, opts.bindpw, opts.starttls,
-               opts.base, opts.scope, filterstr))
+    exit(start(args.uri, args.binddn, args.bindpw, args.starttls,
+               args.base, args.scope, args.filterstr))
 
 
 if __name__ == '__main__':
