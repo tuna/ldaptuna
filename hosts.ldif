@@ -1,0 +1,31 @@
+dn: cn={name},ou=hosts,o=tuna
+objectClass: tunaDevice
+objectClass: device
+objectClass: ipHost
+objectClass: top
+cn: {name}
+ipHostNumber:
+l:
+tunaOs:
+tunaLdapLogin:
+description:
+
+dn: ou=groups,cn={name},ou=hosts,o=tuna
+ou: groups
+objectClass: organizationalUnit
+objectClass: top
+
+dn: cn=users,ou=groups,cn={name},ou=hosts,o=tuna
+gidNumber: 1500
+cn: users
+objectClass: posixGroup
+objectClass: top
+objectClass: tunaMemberUidURIObject
+tunaMemberUidURI: ldap:///ou=people,o=tuna?uid?one?(memberOf=cn=userDNs,ou=groups,cn={name},ou=hosts,o=tuna)
+
+dn: cn=userDNs,ou=groups,cn={name},ou=hosts,o=tuna
+objectClass: groupOfNames
+objectClass: top
+cn: userDNs
+member:
+
