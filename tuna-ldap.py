@@ -67,7 +67,7 @@ def get_bindinfo(user=''):
     return binddn, bindpw
 
 
-def main():
+def mk_argparser():
     parser = ArgumentParser(description='TUNA\'s LDAP tool')
     parser.add_argument('-u', '--user', '--as', type=str,
                         help='the short username stored in ~/%s' % CONF_FNAME)
@@ -92,8 +92,18 @@ def main():
     searchcmd.add_argument('filterstr')
     searchcmd.set_defaults(action='search')
 
+    #applycmd = subparsers.add_parser('apply')
+    #applycmd.add_argument('file')
+    #applycmd.set_defaults(action='apply')
+
+    return parser
+
+
+def main():
+    parser = mk_argparser()
     args = parser.parse_args()
 
+    ldif = filterstr = ''
     # Determine what to do
     if args.action in ('edit', 'list', 'new'):
         base = 'ou=%s,%s' % (args.unit, BASEDN)
@@ -105,17 +115,17 @@ def main():
             base = '%s=%s,%s' % (attr, args.entity, base)
         scope = args.recursive and 'sub' or (args.entity and 'base' or 'one')
 
-        ldif = ''
         if args.action == 'new':
             fname = os.path.join(os.path.dirname(__file__), '%s.ldif' % unit)
             if os.path.exists(fname):
                 ldif = open(fname).read().format(name=name or '{name}')
             else:
                 ldif = '# Template %s not found, create from scratch' % fname
-    else:
-        pass
+    elif args.action == 'search':
+        base, scope, filterstr = args.base, args.scope, args.filterstr
+    #elif args.action == 'apply':
+    #    ldif = open(args.file).read()
 
-    filterstr = ''
     binddn, bindpw = get_bindinfo(args.user)
 
     ldapvi.start(URI, binddn, bindpw,
