@@ -13,6 +13,22 @@ import ldif
 from ldap import LDAPError
 
 
+scopes = {
+    'base': ldap.SCOPE_BASE,
+    'one': ldap.SCOPE_ONELEVEL,
+    'sub': ldap.SCOPE_SUBTREE
+}
+
+retcodes = {
+    '': 0,
+    'cmdline': 2,
+    'cancelled': 3,
+    'connect': 4,
+    'starttls': 5,
+    'bind': 6,
+    'operation': 7,
+}
+
 class LDIFParser(ldif.LDIFParser):
     def __init__(self, *args, **kwargs):
         ldif.LDIFParser.__init__(self, *args, **kwargs)
@@ -27,23 +43,14 @@ class LDIFParser(ldif.LDIFParser):
 
 
 class LDIFWriter(ldif.LDIFWriter):
-    force_plain = set(['description', 'l', 'tunaZhName'])
+    force_plain = set(['description', 'l', 'tunaZhName', 'tunaLdapLogin'])
     def _needs_base64_encoding(self, type_, value):
         return type_ not in self.force_plain and \
                ldif.LDIFWriter._needs_base64_encoding(self, type_, value)
 
 
 def exit(why):
-    codes = {
-        '': 0,
-        'cmdline': 2,
-        'cancelled': 3,
-        'connect': 4,
-        'starttls': 5,
-        'bind': 6,
-        'operation': 7,
-    }
-    sys.exit(codes[why])
+    sys.exit(retcodes[why])
 
 
 def fire_editor(fname):
@@ -83,7 +90,10 @@ def mkchanges(old, new):
     return changes
 
 
-def start(uri, user, password, base, scope, starttls, filterstr):
+def start(
+        uri, binddn, bindpw, starttls=True,
+        base='', scope='sub', filterstr='',
+        verb='edit', ldif=''):
     def efmt(e):
         msg = e.args[0]
         s = msg['desc']
@@ -104,12 +114,13 @@ def start(uri, user, password, base, scope, starttls, filterstr):
             print('Failed to starttls: %s' % efmt(e))
             return 'starttls'
     try:
-        conn.bind_s(user, password)
+        conn.bind_s(binddn, bindpw)
     except ldap.LDAPError as e:
-        print('Failed to login as %s: %s' % (user, efmt(e)))
+        print('Failed to login as %s: %s' % (binddn, efmt(e)))
         return 'bind'
 
-    entries = conn.search_s(base, scope, filterstr)
+    entries = conn.search_s(
+        base, scopes[scope], filterstr or '(objectClass=*)')
 
     fd, fname = mkstemp('.ldif')
     fout = os.fdopen(fd, 'w')
@@ -128,7 +139,7 @@ def start(uri, user, password, base, scope, starttls, filterstr):
     entries = dict(entries)
     changes = mkchanges(entries, newentries)
 
-    msg = 'add %d, modify %d, delete %d. Confirm? [y/N] ' % (
+    msg = 'add %d, modify %d, delete %d. Confirm? [Y/n] ' % (
           len(changes['add']), len(changes['modify']), len(changes['delete']))
 
     while True:
@@ -136,7 +147,7 @@ def start(uri, user, password, base, scope, starttls, filterstr):
         if reply == 'n':
             print('LDIF saved in %s' % fname)
             return 'cancelled'
-        elif reply == 'y':
+        elif reply in ('', 'y'):
             break
         else:
             print('Invalid input, try again')
@@ -153,6 +164,7 @@ def start(uri, user, password, base, scope, starttls, filterstr):
 
     if allgood:
         os.unlink(fname)
+        print('Done.')
         return ''
     else:
         print('LDIF saved in %s' % fname)
@@ -162,8 +174,8 @@ def start(uri, user, password, base, scope, starttls, filterstr):
 def main():
     stropts = [
         ('-H', '--uri'),
-        ('-D', '--user'),
-        ('-w', '--password'),
+        ('-D', '--binddn', '--user'),
+        ('-w', '--bindpw', '--password'),
         ('-b', '--base'),
     ]
     boolopts = [
@@ -171,11 +183,6 @@ def main():
         ('-i', '--interactive'),
         ('-W', '--askpw'),
     ]
-    scopes = {
-        'base': ldap.SCOPE_BASE,
-        'one': ldap.SCOPE_ONELEVEL,
-        'sub': ldap.SCOPE_SUBTREE
-    }
 
     parser = OptionParser()
     for t in stropts:
@@ -187,25 +194,23 @@ def main():
 
     opts, args = parser.parse_args(sys.argv[1:])
 
-    scope = scopes[opts.scope]
-
     if len(args) == 0:
-        filterstr = '(objectClass=*)'
+        filterstr = ''
     elif len(args) == 1:
         filterstr = args[0]
     else:
         print('Only one argument, the filter, is accepted')
         exit('cmdline')
 
-    for opt in 'uri', 'user', 'base':
+    for opt in 'uri', 'binddn', 'base':
         if not getattr(opts, opt):
             setattr(opts, opt, raw_input('%s? ' % opt))
 
     if opts.askpw:
-        opts.password = getpass()
+        opts.bindpw = getpass()
 
-    exit(start(opts.uri, opts.user, opts.password, opts.base, scope,
-               opts.starttls, filterstr))
+    exit(start(opts.uri, opts.binddn, opts.bindpw, opts.starttls
+               opts.base, opts.scope, filterstr))
 
 
 if __name__ == '__main__':
