@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 import ldapvi
 
 
-CONF_FNAME = '.tuna-ldap'
+CONF_FNAME = '.ldaptuna'
 
 CONF_COMMENT = '''User credentials are base64-encoded.
 This is only meant to prevent occasional physical eavesdropping; it is *NOT* a
