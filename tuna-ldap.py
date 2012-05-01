@@ -33,13 +33,13 @@ def parse_args(args):
     if len(args) < 2 or len(args) > 3:
         sys.exit(2)
 
-    verb = args[0]
-    if verb in ('edit', 'list', 'new', 'search'):
+    action = args[0]
+    if action in ('edit', 'list', 'new', 'search'):
         pass
-    elif verb == 'ls':
-        verb = show
+    elif action == 'ls':
+        action = show
     else:
-        print('Unknown verb: %s' % verb)
+        print('Unknown action: %s' % action)
         sys.exit(2)
 
     unit = args[1]
@@ -63,24 +63,28 @@ def parse_args(args):
     filterstr = ''
 
     ldif = ''
-    if verb == 'new':
+    if action == 'new':
         template = os.path.join(os.path.dirname(__file__), '%s.ldif' % unit)
         if os.path.exists(template):
             ldif = open(template).read().format(name=name or '{name}')
         else:
             ldif = '# Template %s not found, create from scratch' % template
-    return base, filterstr, verb, ldif
+    return base, filterstr, action, ldif
 
 
 def main():
-    parser = OptionParser()
-    parser.add_option('-u', '--user', '--as', type='string')
-    parser.add_option('-r', '-R', '--recursive', action='store_true')
+    usage = 'usage: %prog [options] <action> <unit> [name]'
+    epilog = '''Action: one of edit, list, new, search'''
+    parser = OptionParser(usage=usage, epilog=epilog)
+    parser.add_option('-u', '--user', '--as', type='string',
+                      help='the short username stored in ~/.ldap-tuna')
+    parser.add_option('-r', '-R', '--recursive', action='store_true',
+                      help='list/modify subentries too')
 
     opts, args = parser.parse_args(sys.argv[1:])
 
     # Determine what to do
-    base, filterstr, verb, ldif = parse_args(args)
+    base, filterstr, action, ldif = parse_args(args)
 
     conf_name = os.path.join(os.environ['HOME'], '.tuna-ldap')
     conf0, conf = read_conf(conf_name)
@@ -114,7 +118,7 @@ def main():
     scope = opts.recursive and 'sub' or 'base'
     ldapvi.start('ldap://ldap.tuna.tsinghua.edu.cn', binddn, bindpw,
                  base=base, scope=scope, filterstr=filterstr,
-                 verb=verb, ldif=ldif)
+                 action=action, ldif=ldif)
 
 
 if __name__ == '__main__':

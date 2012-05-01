@@ -102,7 +102,7 @@ def sort_entries(entries):
 
 def start(uri, binddn, bindpw, starttls=True,
           base='', scope='sub', filterstr='',
-          verb='edit', ldif=''):
+          action='edit', ldif=''):
     def efmt(e):
         msg = e.args[0]
         s = msg['desc']
@@ -132,25 +132,25 @@ def start(uri, binddn, bindpw, starttls=True,
         return 'bind'
 
     # Open LDIF file for writing
-    if verb in ('edit', 'new'):
+    if action in ('edit', 'new'):
         fd, fname = mkstemp('.ldif')
         fldif = os.fdopen(fd, 'w')
 
-    if verb in ('list', 'edit'):
+    if action in ('list', 'edit'):
         # Search, sort and unparse
         old = sort_entries(conn.search_s(
             base, scopes[scope], filterstr or '(objectClass=*)'))
 
-        if verb == 'list':
+        if action == 'list':
             fldif = sys.stdout
         writer = LDIFWriter(fldif)
 
         for dn, attrs in old:
             writer.unparse(dn, attrs)
 
-    if verb in ('edit', 'new'):
+    if action in ('edit', 'new'):
         # Save old entries, prepair LDIF file and open for reading
-        if verb == 'edit':
+        if action == 'edit':
             old = dict(old)
         else:
             old = {}
