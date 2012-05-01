@@ -29,22 +29,61 @@ def read_conf(fname):
     return conf0, conf
 
 
+def parse_args(args):
+    if len(args) < 2 or len(args) > 3:
+        sys.exit(2)
+
+    verb = args[0]
+    if verb in ('edit', 'list', 'new', 'search'):
+        pass
+    elif verb == 'ls':
+        verb = show
+    else:
+        print('Unknown verb: %s' % verb)
+        sys.exit(2)
+
+    unit = args[1]
+    if unit in ('people', 'robots', 'domains', 'hosts'):
+        pass
+    else:
+        print('Unknown unit: %s' % unit)
+        sys.exit(2)
+
+    base = 'ou=%s,o=tuna' % unit
+    if len(args) == 3:
+        name = args[2]
+        if unit == 'people':
+            attr = 'uid'
+        else:
+            attr = 'cn'
+        base = '%s=%s,%s' % (attr, name, base)
+    else:
+        name = ''
+
+    filterstr = ''
+
+    ldif = ''
+    if verb == 'new':
+        template = os.path.join(os.path.dirname(__file__), '%s.ldif' % unit)
+        if os.path.exists(template):
+            ldif = open(template).read().format(name=name or '{name}')
+        else:
+            ldif = '# Template %s not found, create from scratch' % template
+    return base, filterstr, verb, ldif
+
+
 def main():
     parser = OptionParser()
     parser.add_option('-u', '--user', '--as', type='string')
+    parser.add_option('-r', '-R', '--recursive', action='store_true')
 
     opts, args = parser.parse_args(sys.argv[1:])
 
     # Determine what to do
-    if len(args) < 2 or len(args) > 3:
-        sys.exit(2)
-    verb, part = args[0:2]
-    name = len(args) == 3 and args[2] or ''
-    base = 'ou=%s,o=tuna' % obj
+    base, filterstr, verb, ldif = parse_args(args)
 
     conf_name = os.path.join(os.environ['HOME'], '.tuna-ldap')
     conf0, conf = read_conf(conf_name)
-
     # Determine user
     user = opts.user or conf['default'] or raw_input('Default user: ')
     conf['default'] = conf['default'] or user
@@ -72,8 +111,10 @@ def main():
     if bindpw is None:
         bindpw = getpass('Password (one time): ')
 
+    scope = opts.recursive and 'sub' or 'base'
     ldapvi.start('ldap://ldap.tuna.tsinghua.edu.cn', binddn, bindpw,
-                 base=base)
+                 base=base, scope=scope, filterstr=filterstr,
+                 verb=verb, ldif=ldif)
 
 
 if __name__ == '__main__':

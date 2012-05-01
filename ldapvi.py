@@ -86,14 +86,23 @@ def mkchanges(old, new):
 
     for dn in old.keys():
         if not new.has_key(dn):
-            changes['delete'].append(dn)
+            changes['delete'].append((dn,))
     return changes
 
 
-def start(
-        uri, binddn, bindpw, starttls=True,
-        base='', scope='sub', filterstr='',
-        verb='edit', ldif=''):
+def sort_entries(entries):
+    _dnli = {}
+    for dn, attrs in entries:
+        li = dn.split(',')
+        li.reverse()
+        _dnli[dn] = li
+    entries.sort(lambda a, b: cmp(_dnli[a[0]], _dnli[b[0]]))
+    return entries
+
+
+def start(uri, binddn, bindpw, starttls=True,
+          base='', scope='sub', filterstr='',
+          verb='edit', ldif=''):
     def efmt(e):
         msg = e.args[0]
         s = msg['desc']
@@ -101,74 +110,90 @@ def start(
             s += ' (%s)' % (msg['info'])
         return s
 
+    def error(s, e):
+        sys.stderr.write('Failed to %s:\n    %s\n' % (s, efmt(e)))
+
     try:
         conn = ldap.initialize(uri)
     except LDAPError as e:
-        print('Failed to connect to %s: %s' % (uri, efmt(e)))
+        error('connect to %s' % uri, e)
         return 'connect'
     if starttls:
         ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
         try:
             conn.start_tls_s()
         except LDAPError as e:
-            print('Failed to starttls: %s' % efmt(e))
+            error('starttls', e)
             return 'starttls'
     try:
         conn.bind_s(binddn, bindpw)
     except ldap.LDAPError as e:
-        print('Failed to login as %s: %s' % (binddn, efmt(e)))
+        error('login as %s' % binddn, e)
         return 'bind'
 
-    entries = conn.search_s(
-        base, scopes[scope], filterstr or '(objectClass=*)')
+    # Open LDIF file for writing
+    if verb in ('edit', 'new'):
+        fd, fname = mkstemp('.ldif')
+        fldif = os.fdopen(fd, 'w')
 
-    fd, fname = mkstemp('.ldif')
-    fout = os.fdopen(fd, 'w')
-    writer = LDIFWriter(fout)
+    if verb in ('list', 'edit'):
+        # Search, sort and unparse
+        old = sort_entries(conn.search_s(
+            base, scopes[scope], filterstr or '(objectClass=*)'))
 
-    for dn, attrs in entries:
-        writer.unparse(dn, attrs)
+        if verb == 'list':
+            fldif = sys.stdout
+        writer = LDIFWriter(fldif)
 
-    fout.close()
-    fire_editor(fname)
+        for dn, attrs in old:
+            writer.unparse(dn, attrs)
 
-    with open(fname) as fin:
-        parser = LDIFParser(fin)
-        newentries = parser.parse()
-
-    entries = dict(entries)
-    changes = mkchanges(entries, newentries)
-
-    msg = 'add %d, modify %d, delete %d. Confirm? [Y/n] ' % (
-          len(changes['add']), len(changes['modify']), len(changes['delete']))
-
-    while True:
-        reply = raw_input(msg).lower()
-        if reply == 'n':
-            print('LDIF saved in %s' % fname)
-            return 'cancelled'
-        elif reply in ('', 'y'):
-            break
+    if verb in ('edit', 'new'):
+        # Save old entries, prepair LDIF file and open for reading
+        if verb == 'edit':
+            old = dict(old)
         else:
-            print('Invalid input, try again')
+            old = {}
+            fldif.write(ldif)
+        fldif.close()
+        fire_editor(fname)
+        fldif = open(fname)
 
-    allgood = True
-    for verb in 'add', 'modify', 'delete':
-        func = getattr(conn, '%s_s' % verb)
-        for args in changes[verb]:
-            try:
-                func(*args)
-            except ldap.LDAPError as e:
-                print('Failed to %s %s: %s' % (verb, args[0], e.message))
-                allgood = False
+        parser = LDIFParser(fldif)
+        new = parser.parse()
+        changes = mkchanges(old, new)
 
-    if allgood:
-        os.unlink(fname)
-        print('Done.')
-        return ''
-    else:
-        print('LDIF saved in %s' % fname)
-        return 'operation'
+        msg = 'add %d, modify %d, delete %d. Confirm? [Y/n] ' % (
+              len(changes['add']), len(changes['modify']),
+              len(changes['delete']))
+
+        while True:
+            reply = raw_input(msg).lower()
+            if reply == 'n':
+                print('LDIF saved in %s' % fname)
+                return 'cancelled'
+            elif reply in ('', 'y'):
+                break
+            else:
+                print('Invalid input, try again')
+
+        allgood = True
+        for op in 'add', 'modify', 'delete':
+            func = getattr(conn, '%s_s' % op)
+            for change in changes[op]:
+                try:
+                    func(*change)
+                except ldap.LDAPError as e:
+                    error('%s %s' % (op, change[0]), e)
+                    allgood = False
+
+        if allgood:
+            os.unlink(fname)
+            print('Done.')
+            return ''
+        else:
+            print('LDIF saved in %s' % fname)
+            return 'operation'
 
 
 def main():
@@ -209,7 +234,7 @@ def main():
     if opts.askpw:
         opts.bindpw = getpass()
 
-    exit(start(opts.uri, opts.binddn, opts.bindpw, opts.starttls
+    exit(start(opts.uri, opts.binddn, opts.bindpw, opts.starttls,
                opts.base, opts.scope, filterstr))
 
 
