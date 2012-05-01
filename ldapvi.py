@@ -209,7 +209,7 @@ def main():
         ('-W', '--askpw'),
     ]
 
-    parser = ArgumentParser()
+    parser = ArgumentParser(description='A more frugal ldapvi in Python')
     for t in stropts:
         parser.add_argument(*t, type=str)
     for t in boolopts:
