@@ -116,7 +116,8 @@ def main():
         scope = args.recursive and 'sub' or (args.entity and 'base' or 'one')
 
         if args.action == 'new':
-            fname = os.path.join(os.path.dirname(__file__), '%s.ldif' % unit)
+            fname = os.path.join(os.path.dirname(__file__),
+                                 'templates', '%s.ldif' % unit)
             if os.path.exists(fname):
                 ldif = open(fname).read().format(name=name or '{name}')
             else:
