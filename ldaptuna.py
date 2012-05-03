@@ -21,7 +21,7 @@ only store it on your personal computer.
 
 BASEDN = 'o=tuna'
 
-URI = 'ldap://ldap.tuna.tsinghua.edu.cn'
+URI_TEMPLATE = 'ldap://{server}.tuna.tsinghua.edu.cn'
 
 
 def read_conf(fname):
@@ -69,12 +69,15 @@ def get_bindinfo(user=''):
 
 def mk_argparser():
     parser = ArgumentParser(description='TUNA\'s LDAP tool')
-    parser.add_argument('-u', '--user', '--as', type=str,
+    parser.add_argument('-u', '--user', '--as',
                         help='the short username stored in ~/%s' % CONF_FNAME)
+    parser.add_argument('-H', '--server', default='ldap',
+                        choices=['ldap', 'ldap2'],
+                        help='Which server to query')
 
     # Parent parser for edit, list and new
     advcmd = ArgumentParser(add_help=False)
-    units = ['people', 'robots', 'domains', 'hosts']
+    units = ['people', 'robots', 'domains', 'hosts', 'groups']
     advcmd.add_argument('unit', choices=units)
     advcmd.add_argument('entity', nargs='?', default='')
     advcmd.add_argument('-r', '-R', '--recursive', action='store_true',
@@ -89,7 +92,7 @@ def mk_argparser():
     searchcmd.add_argument('-s', '--scope', default='sub',
                            choices=ldapvi.scopes.keys())
     searchcmd.add_argument('base')
-    searchcmd.add_argument('filterstr')
+    searchcmd.add_argument('filterstr', nargs='?', default='')
     searchcmd.set_defaults(action='search')
 
     #applycmd = subparsers.add_parser('apply')
@@ -103,9 +106,11 @@ def main():
     parser = mk_argparser()
     args = parser.parse_args()
 
+    uri = URI_TEMPLATE.format(server=args.server)
     ldif = filterstr = ''
     # Determine what to do
     if args.action in ('edit', 'list', 'new'):
+        action = args.action
         base = 'ou=%s,%s' % (args.unit, BASEDN)
         if args.entity:
             if args.unit == 'people':
@@ -123,15 +128,16 @@ def main():
             else:
                 ldif = '# Template %s not found, create from scratch' % fname
     elif args.action == 'search':
+        action = 'list'
         base, scope, filterstr = args.base, args.scope, args.filterstr
     #elif args.action == 'apply':
     #    ldif = open(args.file).read()
 
     binddn, bindpw = get_bindinfo(args.user)
 
-    ldapvi.start(URI, binddn, bindpw,
+    ldapvi.start(uri, binddn, bindpw,
                  base=base, scope=scope, filterstr=filterstr,
-                 action=args.action, ldif=ldif)
+                 action=action, ldif=ldif)
 
 
 if __name__ == '__main__':
