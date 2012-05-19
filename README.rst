@@ -14,13 +14,28 @@ a "keyring" mechanism to remember your password. The keyring is saved as a
 JSON file in ``~/.ldaptuna``; you are encouraged to inspect and modify it by
 hand.
 
+XXX: i might want to remove the keyring implementation and use python-keyring
+a bit later.
+
+
+Shell Wrappers
+--------------
+
+Archlinux has Python 3 as ``python``, while more conservative distributions
+have Python2 as ``python``. This makes it impossible to write a portable
+shebang line (and you guessed it, I use Archlinux). To work around this, shell
+wrappers ``ldaptuna`` and ``ldapvi`` were created.
+
+FYI: Both ``ldapvi`` and ``ldaptuna`` are just symlinks to ``runpy``.
+``runpy`` looks at ``$0`` to decide which Python source to run.
+
 
 Quickstart
 ----------
 
 Run this to generate ~/.ldaptuna (in fact any valid command will do)::
 
- ./ldaptuna.py list domains
+ ./ldaptuna list domains
 
 This will ask for a default user (just an identifier for the keyring item) and
 the binddn (usually uid={name},ou=people,o=tuna) and bindpw (LDAP password)
@@ -35,30 +50,24 @@ For xiaq, the conversation will look like::
 Read help messages (some auto-generated doc, we need something better in
 future)::
 
- ./ldaptuna.py -h
- ./ldaptuna.py list -h
- ./ldaptuna.py edit -h
-
-
-Shell Wrapper
--------------
-
-Archlinux has Python 3 as ``python``, while on more conservative distributions
-have Python2 as ``python``.
-
-I created a shell wrapper for Python scripts, ``runpy`` to work around this.
-Both ``ldapvi`` and ``ldaptuna`` are symlinks to ``runpy``.
-
-``runpy`` looks at ``$0`` to decide the corresponding Python source to run.
+ ./ldaptuna -h
+ ./ldaptuna list -h
+ ./ldaptuna edit -h
 
 
 Dependencies
 ------------
 
-* Python 2 (only tested with Python 2.7)
+This software requires Python 2. I develop and test it with Python 2.7, but it
+should run with Python 2.5 or 2.6. If it doesn't, it's a bug, and you may want
+to tell me.
+
+The following Python modules are required. They may be installed either
+through your distribution's package manager or pypi (or easy_install if you
+are really nostalgic).
 
 * python-ldap
-  
+
 * argparse (preinstalled with Python 2.7)
 
 
