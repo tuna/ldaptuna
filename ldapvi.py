@@ -40,6 +40,8 @@ class LDIFParser(ldif.LDIFParser):
 
 
 class LDIFWriter(ldif.LDIFWriter):
+    # XXX Suppressing base64 sometimes breaks the encoding.
+    # This might be a bug of ldif module.
     force_plain = set(['description', 'l', 'tunaZhName', 'tunaLdapLogin'])
     def _needs_base64_encoding(self, type_, value):
         return type_ not in self.force_plain and \
