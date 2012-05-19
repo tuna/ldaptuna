@@ -18,14 +18,7 @@ objectClass: top
 dn: cn=users,ou=groups,cn={name},ou=hosts,o=tuna
 gidNumber: 1500
 cn: users
-objectClass: posixGroup
+objectClass: tunaGroup
 objectClass: top
-objectClass: tunaMemberUidURIObject
-tunaMemberUidURI: ldap:///ou=people,o=tuna?uid?one?(memberOf=cn=userDNs,ou=groups,cn={name},ou=hosts,o=tuna)
-
-dn: cn=userDNs,ou=groups,cn={name},ou=hosts,o=tuna
-objectClass: groupOfNames
-objectClass: top
-cn: userDNs
 member:
 
