@@ -19,13 +19,11 @@ scopes = {
     'sub': ldap.SCOPE_SUBTREE
 }
 
-retcodes = {
+_retcodes = {
     '': 0,
     'cmdline': 2,
     'cancelled': 3,
     'connect': 4,
-    'starttls': 5,
-    'bind': 6,
     'operation': 7,
 }
 
@@ -50,7 +48,7 @@ class LDIFWriter(ldif.LDIFWriter):
 
 
 def exit(why):
-    sys.exit(retcodes[why])
+    sys.exit(_retcodes[why])
 
 
 def fire_editor(fname):
@@ -58,17 +56,19 @@ def fire_editor(fname):
     if editor:
         try:
             check_call([editor, fname])
+            return
         except CalledProcessError as e:
             print('Editor %s failed with return code %d, ' \
-                  'fall back to manual mode' % ( editor, e.returncode))
-    else:
-        print('Now modify %s, and press Enter when you are done' % fname)
+                  'falling back to manual mode' % ( editor, e.returncode))
+    print('Now modify %s, and press Enter when you are done' % fname)
+    if not editor:
         print('(Hint: set environment variable $EDITOR ' \
               'to launch automatically)')
-        raw_input()
+    raw_input()
 
 
 def mkchanges(old, new):
+    '''Generate add, modify and delete modlists from two LDAP entry lists.'''
     changes = {
         'add': [],
         'modify': [],
@@ -91,6 +91,7 @@ def mkchanges(old, new):
 
 
 def sort_entries(entries):
+    '''Sort LDAP entries by DN.'''
     _dnli = {}
     for dn, attrs in entries:
         li = dn.split(',')
@@ -98,6 +99,26 @@ def sort_entries(entries):
         _dnli[dn] = li
     entries.sort(lambda a, b: cmp(_dnli[a[0]], _dnli[b[0]]))
     return entries
+
+
+def connect(uri, binddn, bindpw, starttls=True):
+    conn = ldap.initialize(uri)
+    if starttls:
+        # XXX
+        ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+        conn.start_tls_s()
+    conn.bind_s(binddn, bindpw)
+    return conn
+
+
+def ask(prompt, choices, default=None):
+    while True:
+        reply = raw_input(prompt).lower()
+        if reply in choices:
+            return reply
+        if reply == '' and default is not None:
+            return default
+        print('Invalid input, try again')
 
 
 def start(uri, binddn, bindpw, starttls=True,
@@ -114,28 +135,18 @@ def start(uri, binddn, bindpw, starttls=True,
         sys.stderr.write('Failed to %s:\n    %s\n' % (s, efmt(e)))
 
     try:
-        conn = ldap.initialize(uri)
+        conn = connect(uri, binddn, bindpw, starttls)
     except LDAPError as e:
-        error('connect to %s' % uri, e)
+        error('connect to %s as %s %s' % (
+              uri, binddn, starttls * 'with TLS'), e)
         return 'connect'
-    if starttls:
-        ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
-        try:
-            conn.start_tls_s()
-        except LDAPError as e:
-            error('starttls', e)
-            return 'starttls'
-    try:
-        conn.bind_s(binddn, bindpw)
-    except ldap.LDAPError as e:
-        error('login as %s' % binddn, e)
-        return 'bind'
 
     # Open LDIF file for writing
     if action in ('edit', 'new'):
         fd, fname = mkstemp('.ldif')
         fldif = os.fdopen(fd, 'w')
 
+    # Write LDIF
     if action in ('list', 'edit'):
         # Search, sort and unparse
         old = sort_entries(conn.search_s(
@@ -148,6 +159,7 @@ def start(uri, binddn, bindpw, starttls=True,
         for dn, attrs in old:
             writer.unparse(dn, attrs)
 
+    # Read and apply LDIF
     if action in ('edit', 'new'):
         # Save old entries, prepair LDIF file and open for reading
         if action == 'edit':
@@ -167,15 +179,10 @@ def start(uri, binddn, bindpw, starttls=True,
               len(changes['add']), len(changes['modify']),
               len(changes['delete']))
 
-        while True:
-            reply = raw_input(msg).lower()
-            if reply == 'n':
-                print('LDIF saved in %s' % fname)
-                return 'cancelled'
-            elif reply in ('', 'y'):
-                break
-            else:
-                print('Invalid input, try again')
+        reply = ask(msg, 'yn', 'y')
+        if reply == 'n':
+            print('LDIF saved in %s' % fname)
+            return 'cancelled'
 
         allgood = True
         for op in 'add', 'modify', 'delete':

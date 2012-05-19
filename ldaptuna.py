@@ -122,9 +122,9 @@ def main():
 
         if args.action == 'new':
             fname = os.path.join(os.path.dirname(__file__),
-                                 'templates', '%s.ldif' % unit)
+                                 'templates', '%s.ldif' % args.unit)
             if os.path.exists(fname):
-                ldif = open(fname).read().format(name=name or '{name}')
+                ldif = open(fname).read().format(name=args.entity or '{name}')
             else:
                 ldif = '# Template %s not found, create from scratch' % fname
     elif args.action == 'search':
