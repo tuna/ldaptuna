@@ -1,4 +1,3 @@
-#!/usr/bin/python2
 import os
 import sys
 from subprocess import check_call, CalledProcessError
