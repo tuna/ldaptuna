@@ -1,11 +1,11 @@
-dn: cn={name},ou=services,o=tuna
+dn: cn={name},ou=domains,o=tuna
 objectClass: top
 cn: {name}
 description:
 # Alias
 objectClass: alias
 objectClass: extensibleObject
-aliasedObjectName:
+aliasedObjectName: cn=CHANGEME,ou=hosts,o=tuna
 # Adhoc record
 #objectClass: device
 #objectClass: ipHost
