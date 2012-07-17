@@ -11,14 +11,18 @@ import ldapvi
 
 CONF_FNAME = '.ldaptuna'
 
-CONF_COMMENT = '''User credentials are base64-encoded.
-This is only meant to prevent occasional physical eavesdropping; it is *NOT* a
-secure storage mechanism. Be sure to set strict permissions on this file (by
-default permission bits 0600 is set but you may want to check to be sure), and
-only store it on your personal computer.
+CONF_COMMENT = '''WARNING: User credentials are base64-encoded.
+This is only meant to prevent occasional physical eavesdropping; BY NO MEANS
+IS IT A SECURE STORAGE MECHANISM. Be sure to set strict permissions on this
+file (ldaptuna sets 0600 by default), and only store it on your personal
+computer. If you accidentally stored the bindpw you can just change it to
+null, which has the effect of asking you the password each time. (An empty
+string means an empty password.)
 '''.replace('\n', ' ')
 
 BASEDN = 'o=tuna'
+
+DEFAULT_BINDDN_FMT = 'uid={user},ou=people,' + BASEDN
 
 URI_TEMPLATE = 'ldap://{server}.tuna.tsinghua.edu.cn'
 
@@ -31,7 +35,7 @@ def read_conf(fname):
     else:
         os.close(os.open(fname, os.O_WRONLY | os.O_CREAT, 0600))
         conf0 = {}
-        conf = {'default': '', 'secrets': {}, '_comment': CONF_COMMENT}
+        conf = {'default': '', 'profiles': {}, '_comment': CONF_COMMENT}
     return conf0, conf
 
 
@@ -43,19 +47,27 @@ def get_bindinfo(user=''):
     conf['default'] = conf['default'] or user
 
     # Determine binddn and bindpw
-    secrets = conf['secrets']
-    if secrets.has_key(user):
-        binddn = secrets[user]['binddn']
-        bindpw = secrets[user]['bindpw']
+    profiles = conf['profiles']
+    if profiles.has_key(user):
+        binddn = profiles[user]['binddn']
+        bindpw = profiles[user]['bindpw']
         if bindpw is not None:
             bindpw = base64.decodestring(bindpw)
     else:
-        binddn = raw_input('Bind DN: ')
+        print('Creating profile {user}'.format(user=user))
+        default_binddn = DEFAULT_BINDDN_FMT.format(user=user)
+        binddn = raw_input('Bind DN (defaulting to {dn}): '.format(
+                              dn=default_binddn)) or default_binddn
         try:
             bindpw = getpass('Password (^C to avoid saving password): ')
         except KeyboardInterrupt:
             bindpw = None
-        secrets[user] = {
+
+        if bindpw is not None:
+            raw_input('Be sure to read the comment in {conf}. '
+                      'Press Enter now...'.format(conf=conf_name))
+
+        profiles[user] = {
             'binddn': binddn,
             'bindpw': bindpw and base64.encodestring(bindpw),
         }
@@ -74,7 +86,7 @@ def mk_argparser():
                         choices=['ldap', 'ldap2'],
                         help='Which server to query')
 
-    # Parent parser for edit, list and new
+    # Parent parser for apply, edit, list and new - the porcelain commands
     advcmd = ArgumentParser(add_help=False)
     units = ['people', 'robots', 'domains', 'hosts', 'groups']
     advcmd.add_argument('unit', choices=units)
@@ -83,20 +95,20 @@ def mk_argparser():
                         help='list/modify subentries too', default=False)
 
     subparsers = parser.add_subparsers(title='subcommands')
-    for cmd in 'edit', 'list', 'new':
+    for cmd in 'apply', 'edit', 'list', 'new':
         subparser = subparsers.add_parser(cmd, parents=[advcmd])
         subparser.set_defaults(action=cmd)
 
+    applycmd = subparsers.choices['apply']
+    applycmd.add_argument('file')
+
+    # search - the plumbing command (the only one for now)
     searchcmd = subparsers.add_parser('search')
     searchcmd.add_argument('-s', '--scope', default='sub',
-                           choices=ldapvi.scopes.keys())
+                           choices=ldapvi.SCOPES.keys())
     searchcmd.add_argument('base')
     searchcmd.add_argument('filterstr', nargs='?', default='')
     searchcmd.set_defaults(action='search')
-
-    #applycmd = subparsers.add_parser('apply')
-    #applycmd.add_argument('file')
-    #applycmd.set_defaults(action='apply')
 
     return parser
 
@@ -129,8 +141,8 @@ def main():
     elif args.action == 'search':
         action = 'list'
         base, scope, filterstr = args.base, args.scope, args.filterstr
-    #elif args.action == 'apply':
-    #    ldif = open(args.file).read()
+    elif args.action == 'apply':
+        ldif = open(args.file).read()
 
     binddn, bindpw = get_bindinfo(args.user)
 
