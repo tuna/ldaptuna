@@ -2,6 +2,7 @@ import os
 import sys
 from subprocess import check_call, CalledProcessError
 from argparse import ArgumentParser
+from collections import OrderedDict
 from tempfile import mkstemp
 from getpass import getpass
 from pprint import pprint
@@ -12,13 +13,13 @@ import ldif
 from ldap import LDAPError
 
 
-scopes = {
+SCOPES = {
     'base': ldap.SCOPE_BASE,
     'one': ldap.SCOPE_ONELEVEL,
     'sub': ldap.SCOPE_SUBTREE
 }
 
-_retcodes = {
+_RETCODES = {
     '': 0,
     'cmdline': 2,
     'cancelled': 3,
@@ -27,32 +28,32 @@ _retcodes = {
 }
 
 class LDIFParser(ldif.LDIFParser):
-    def __init__(self, *args, **kwargs):
-        ldif.LDIFParser.__init__(self, *args, **kwargs)
-        self._entries = {}
-
     def handle(self, dn, entry):
         self._entries[dn] = entry
 
     def parse(self):
+        self._entries = OrderedDict()
         ldif.LDIFParser.parse(self)
         return self._entries
 
 
 class LDIFWriter(ldif.LDIFWriter):
+    pass
     # XXX Suppressing base64 sometimes breaks the encoding.
     # This might be a bug of ldif module.
-    force_plain = set(['description', 'l', 'tunaZhName', 'tunaLdapLogin'])
-    def _needs_base64_encoding(self, type_, value):
-        return type_ not in self.force_plain and \
-               ldif.LDIFWriter._needs_base64_encoding(self, type_, value)
-
+#    force_plain = set(['description', 'l', 'tunaZhName', 'tunaLdapLogin'])
+#    def _needs_base64_encoding(self, type_, value):
+#        return type_ not in self.force_plain and \
+#               ldif.LDIFWriter._needs_base64_encoding(self, type_, value)
 
 def exit(why):
-    sys.exit(_retcodes[why])
+    sys.exit(_RETCODES[why])
 
 
 def fire_editor(fname):
+    '''
+    Fire an external editor to edit file named fname.
+    '''
     editor = os.environ.get('EDITOR', '')
     if editor:
         try:
@@ -69,7 +70,15 @@ def fire_editor(fname):
 
 
 def mkchanges(old, new):
-    '''Generate add, modify and delete modlists from two LDAP entry lists.'''
+    '''
+    Generate add, modify and delete modlists by diffing two LDAP entry lists.
+
+    Return a dict keyed 'add', 'modify' and 'delete'. The values are lists of
+    tuples - (dn, modlist) for 'add' and 'modify', (dn,) for 'delete',
+    suitable to be passed as arguments to conn.add_s, conn.modify_s and
+    conn.delete_s respectively, where conn is an instance of
+    ldap.ldapobject.LDAPObject.
+    '''
     changes = {
         'add': [],
         'modify': [],
@@ -92,7 +101,10 @@ def mkchanges(old, new):
 
 
 def sort_entries(entries):
-    '''Sort LDAP entries by DN.'''
+    '''
+    Sort LDAP entries by DN, ensuring parent elements appear before their
+    children.
+    '''
     _dnli = {}
     for dn, attrs in entries:
         li = dn.split(',')
@@ -103,6 +115,10 @@ def sort_entries(entries):
 
 
 def connect(uri, binddn, bindpw, starttls=True):
+    '''
+    Perform a combo of LDAP initialization and binding and return the
+    connection.
+    '''
     conn = ldap.initialize(uri)
     if starttls:
         # XXX
@@ -112,19 +128,43 @@ def connect(uri, binddn, bindpw, starttls=True):
     return conn
 
 
-def ask(prompt, choices, default=None):
+def ask(prompt, candidates, default=None):
+    '''
+    Ask the user to choose from a list of candidates, ignoring cases of user
+    input.
+    '''
     while True:
         reply = raw_input(prompt).lower()
-        if reply in choices:
+        if reply in candidates:
             return reply
         if reply == '' and default is not None:
             return default
         print('Invalid input, try again')
 
 
+def mktemp(suffix='', prefix='tmp', dir_=None, text=False,
+        mode='w', bufsize=0):
+    '''
+    Like mkstemp, but returns file object and file name instead of fd and
+    file name.
+
+    Accepts extra arguments mode and bufsize to pass to os.fdopen.
+    '''
+    fd, fname = mkstemp(suffix, prefix, dir_, text)
+    fh = os.fdopen(fd, mode, bufsize)
+    return fh, fname
+
+
 def start(uri, binddn, bindpw, starttls=True,
           base='', scope='sub', filterstr='',
           action='edit', ldif=''):
+    '''
+    Entrance point of ldapvi.
+
+    action is one of 'apply', 'edit', 'list' and 'new'.
+    '''
+    filterstr = filterstr or '(objectClass=*)'
+
     def efmt(e):
         msg = e.args[0]
         s = msg['desc']
@@ -142,32 +182,32 @@ def start(uri, binddn, bindpw, starttls=True,
               uri, binddn, starttls * 'with TLS'), e)
         return 'connect'
 
-    # Open LDIF file for writing
+    # Make `old`
+    if action in ('apply', 'edit', 'list'):
+        old = OrderedDict(sort_entries(conn.search_s(
+                  base, SCOPES[scope], filterstr)))
+    elif action == 'new':
+        old = OrderedDict()
+
+    # Prepair LDIF output file
     if action in ('edit', 'new'):
-        fd, fname = mkstemp('.ldif')
-        fldif = os.fdopen(fd, 'w')
+        fldif, fname = mktemp('.ldif')
+    elif action == 'list':
+        fldif = sys.stdout
 
     # Write LDIF
-    if action in ('list', 'edit'):
-        # Search, sort and unparse
-        old = sort_entries(conn.search_s(
-            base, scopes[scope], filterstr or '(objectClass=*)'))
-
+    if action in ('edit', 'list'):
         if action == 'list':
             fldif = sys.stdout
         writer = LDIFWriter(fldif)
 
-        for dn, attrs in old:
+        for dn, attrs in old.items():
             writer.unparse(dn, attrs)
+    elif action in ('apply', 'new'):
+        fldif.write(ldif)
 
     # Read and apply LDIF
-    if action in ('edit', 'new'):
-        # Save old entries, prepair LDIF file and open for reading
-        if action == 'edit':
-            old = dict(old)
-        else:
-            old = {}
-            fldif.write(ldif)
+    if action in ('apply', 'edit', 'new'):
         fldif.close()
         fire_editor(fname)
         fldif = open(fname)
@@ -205,6 +245,9 @@ def start(uri, binddn, bindpw, starttls=True,
 
 
 def main():
+    '''
+    Command-line interface for start().
+    '''
     stropts = [
         ('-H', '--uri'),
         ('-D', '--binddn', '--user'),
@@ -223,7 +266,7 @@ def main():
     for t in boolopts:
         parser.add_argument(*t, action='store_true', default=False)
     parser.add_argument('-s', '--scope', type=str,
-                        choices=scopes.keys(), default='sub')
+                        choices=SCOPES.keys(), default='sub')
     parser.add_argument('filterstr', nargs='?', default='')
 
     args = parser.parse_args()
