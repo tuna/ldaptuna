@@ -4,6 +4,9 @@ objectClass: device
 objectClass: ipHost
 objectClass: top
 cn: {name}
+# If the host has multiple IPs, just write more ipHostNumber values, eg.
+# ipHostNumber: 1.2.3.4
+# ipHostNumber: 2.3.4.5
 ipHostNumber:
 l:
 tunaOs:
@@ -15,9 +18,25 @@ ou: groups
 objectClass: organizationalUnit
 objectClass: top
 
+# This is the list of allowed users for this host.
 dn: cn=users,ou=groups,cn={name},ou=hosts,o=tuna
 gidNumber: 1500
 cn: users
+objectClass: tunaGroup
+objectClass: top
+# The member attribute needs to be full DNs of the user, eg.
+# member: uid=xiaq,ou=people,o=tuna
+member:
+
+# Optional sudoer group for Debian, needs the following /etc/sudoers.d/wheel:
+# %wheel ALL=(root) ALL
+# NOTE: Debian creates `sudoers` as a local (/etc/group) group when installing
+# the sudo package so we have to name the LDAP group differently. On Redhat
+# the system creates a local group named `wheel`. In that case, name the LDAP
+# group `sudoers`.
+dn: cn=wheel,ou=groups,cn={name},ou=hosts,o=tuna
+gidNumber: 1501
+cn: wheel
 objectClass: tunaGroup
 objectClass: top
 member:
