@@ -14,9 +14,6 @@ a "keyring" mechanism to remember your password. The keyring is saved as a
 JSON file in ``~/.ldaptuna``; you are encouraged to inspect and modify it by
 hand.
 
-XXX: i might want to remove the keyring implementation and use python-keyring
-a bit later.
-
 
 Shell Wrappers
 --------------
@@ -26,8 +23,8 @@ have Python2 as ``python``. This makes it impossible to write a portable
 shebang line (and you guessed it, I use Archlinux). To work around this, shell
 wrappers ``ldaptuna`` and ``ldapvi`` were created.
 
-FYI: Both ``ldapvi`` and ``ldaptuna`` are just symlinks to ``runpy``.
-``runpy`` looks at ``$0`` to decide which Python source to run.
+FYI: Both ``ldapvi`` and ``ldaptuna`` are just symlinks to ``dopy``, which
+looks at ``$0`` to decide which Python script to run.
 
 
 Quickstart
@@ -75,6 +72,5 @@ License
 -------
 
 All files are licensed in the ISC license (2-clause BSD license, with fewer
-words), partly because GPL will make the source significantly larger. See
-``COPYING`` for a copy of the license.
+words). See ``COPYING`` for a copy of the license.
 
