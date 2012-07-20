@@ -5,6 +5,7 @@ import base64
 from getpass import getpass
 from copy import deepcopy
 from argparse import ArgumentParser
+from collections import OrderedDict
 
 import ldapvi
 
@@ -25,6 +26,16 @@ BASEDN = 'o=tuna'
 DEFAULT_BINDDN_FMT = 'uid={user},ou=people,' + BASEDN
 
 URI_TEMPLATE = 'ldap://{server}.tuna.tsinghua.edu.cn'
+
+SERVERS = ['ldap', 'ldap2']
+
+UNITS = OrderedDict([
+    ('person', 'people'),
+    ('robot', 'robots'),
+    ('domain', 'domains'),
+    ('host', 'hosts'),
+    ('group', 'groups'),
+])
 
 
 def read_conf(fname):
@@ -81,16 +92,16 @@ def get_bindinfo(user=''):
 
 
 def mk_argparser():
-    parser = ArgumentParser(description='TUNA\'s LDAP tool')
+    parser = ArgumentParser(description="TUNA's LDAP tool", prog='ldaptuna')
     parser.add_argument('-u', '--user', '--as',
                         help='the short username stored in ~/%s' % CONF_FNAME)
     parser.add_argument('-H', '--server', default='ldap',
-                        choices=['ldap', 'ldap2'],
+                        choices=SERVERS,
                         help='Which server to query')
 
     # Parent parser for apply, edit, list and new - the porcelain commands
     advcmd = ArgumentParser(add_help=False)
-    units = ['people', 'robots', 'domains', 'hosts', 'groups']
+    units = UNITS.keys() + UNITS.values()
     advcmd.add_argument('unit', choices=units)
     advcmd.add_argument('entity', nargs='?', default='')
     advcmd.add_argument('-r', '-R', '--recursive', action='store_true',
@@ -124,9 +135,10 @@ def main():
     # Determine what to do
     if args.action in ('edit', 'list', 'new'):
         action = args.action
-        base = 'ou=%s,%s' % (args.unit, BASEDN)
+        unit = UNITS.get(args.unit, args.unit)
+        base = 'ou=%s,%s' % (unit, BASEDN)
         if args.entity:
-            if args.unit == 'people':
+            if unit == 'people':
                 attr = 'uid'
             else:
                 attr = 'cn'
@@ -135,7 +147,7 @@ def main():
 
         if args.action == 'new':
             fname = os.path.join(os.path.dirname(__file__),
-                                 '..', 'templates', '%s.ldif' % args.unit)
+                                 '..', 'templates', '%s.ldif' % unit)
             if os.path.exists(fname):
                 ldif = open(fname).read().format(name=args.entity or '{name}')
             else:
