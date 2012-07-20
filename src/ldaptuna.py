@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import base64
+from os.path import dirname
 from getpass import getpass
 from copy import deepcopy
 from argparse import ArgumentParser
@@ -92,36 +93,79 @@ def get_bindinfo(user=''):
 
 
 def mk_argparser():
+    '''
+    Build and return the main ArgumentParser.
+    '''
     parser = ArgumentParser(description="TUNA's LDAP tool", prog='ldaptuna')
     parser.add_argument('-u', '--user', '--as',
                         help='the short username stored in ~/%s' % CONF_FNAME)
-    parser.add_argument('-H', '--server', default='ldap',
+    parser.add_argument('-H', '--server', metavar='server', default='ldap',
                         choices=SERVERS,
-                        help='Which server to query')
+                        help='''
+        which server to query, possible values are %(choices)s
+                        ''')
 
-    # Parent parser for apply, edit, list and new - the porcelain commands
+    subparsers = parser.add_subparsers(
+        dest='subcommand', title='subcommands', help='''
+        say `%(prog)s <subcommand> -h` to see help for subcommand
+        ''')
+
+    units = UNITS.values() + UNITS.keys()
+
+    # Parent parser for apply, edit, list and new - the porcelain commands,
+    # operating on the level of units and entities
     advcmd = ArgumentParser(add_help=False)
-    units = UNITS.keys() + UNITS.values()
-    advcmd.add_argument('unit', choices=units)
-    advcmd.add_argument('entity', nargs='?', default='')
-    advcmd.add_argument('-r', '-R', '--recursive', action='store_true',
-                        help='list/modify subentries too', default=False)
+    advcmd.add_argument('unit', choices=units, metavar='unit',
+                        help='''
+        which part of LDAP (organizational unit) to operate on. Possible
+        values are %(choices)s. Plural/singular pairs like people/person and
+        domains/domain are equivalent
+                        ''')
+    advcmd.add_argument('entity', nargs='?', default='',
+                        help='''
+        which entity in selected unit to operate on. When omitted, operate on
+        all entities within the selected unit.
+                        ''')
 
-    subparsers = parser.add_subparsers(title='subcommands')
-    for cmd in 'apply', 'edit', 'list', 'new':
-        subparser = subparsers.add_parser(cmd, parents=[advcmd])
-        subparser.set_defaults(action=cmd)
+    # Parent parser for commands that perform LDAP search (apply, edit and
+    # list)
+    searcher = ArgumentParser(add_help=False, parents=[advcmd])
+    searcher.add_argument('-r', '-R', '--recursive', action='store_true',
+                          default=False, help='list/modify subelements too')
 
-    applycmd = subparsers.choices['apply']
-    applycmd.add_argument('file')
+    # A dummy ArgumentParser to define the file argument of apply command.
+    # This is needed since there is no "insert_argument"...
+    _apply_file = ArgumentParser(add_help=False)
+    _apply_file.add_argument('file',
+                          help='LDIF file to apply against the search result')
+
+    def new_subcommand(name, **kwargs):
+        return subparsers.add_parser(name, **kwargs)
+
+    new_subcommand('apply', parents=[_apply_file, searcher])
+    new_subcommand('edit', parents=[searcher], description='''
+        fire an external editor to edit designated entity
+        ''')
+    new_subcommand('list', parents=[searcher], description='''
+        output designated entity to stdout
+        ''')
+    new = new_subcommand('new', parents=[advcmd], description='''
+              create designated entity from a template
+              ''')
+    new.add_argument('-t', '--template', default='', help='''
+        If non-empty, use a template named <unit>.<template>.ldif instead of
+        the default <unit>.ldif. The template is still looked for in the
+        same template directory.
+        ''')
 
     # search - the plumbing command (the only one for now)
-    searchcmd = subparsers.add_parser('search')
-    searchcmd.add_argument('-s', '--scope', default='sub',
-                           choices=ldapvi.SCOPES.keys())
-    searchcmd.add_argument('base')
-    searchcmd.add_argument('filterstr', nargs='?', default='')
-    searchcmd.set_defaults(action='search')
+    search = new_subcommand('search', description='''
+        low-level LDAP search command
+        ''')
+    search.add_argument('-s', '--scope', default='sub',
+                        choices=ldapvi.SCOPES.keys())
+    search.add_argument('base')
+    search.add_argument('filterstr', nargs='?', default='')
 
     return parser
 
@@ -133,8 +177,9 @@ def main():
     uri = URI_TEMPLATE.format(server=args.server)
     ldif = filterstr = ''
     # Determine what to do
-    if args.action in ('edit', 'list', 'new'):
-        action = args.action
+    subcommand = args.subcommand
+    if args.subcommand in ('apply', 'edit', 'list', 'new'):
+        action = subcommand
         unit = UNITS.get(args.unit, args.unit)
         base = 'ou=%s,%s' % (unit, BASEDN)
         if args.entity:
@@ -145,18 +190,21 @@ def main():
             base = '%s=%s,%s' % (attr, args.entity, base)
         scope = args.recursive and 'sub' or (args.entity and 'base' or 'one')
 
-        if args.action == 'new':
-            fname = os.path.join(os.path.dirname(__file__),
-                                 '..', 'templates', '%s.ldif' % unit)
+        if subcommand == 'new':
+            if args.template:
+                name = '%s.%s.ldif' % (unit, args.template)
+            else:
+                name = '%s.ldif' % unit
+            fname = os.path.join(dirname(dirname(__file__)), 'templates', name)
             if os.path.exists(fname):
                 ldif = open(fname).read().format(name=args.entity or '{name}')
             else:
                 ldif = '# Template %s not found, create from scratch' % fname
-    elif args.action == 'search':
+        elif subcommand == 'apply':
+            ldif = open(args.file).read()
+    elif subcommand == 'search':
         action = 'list'
         base, scope, filterstr = args.base, args.scope, args.filterstr
-    elif args.action == 'apply':
-        ldif = open(args.file).read()
 
     binddn, bindpw = get_bindinfo(args.user)
 
