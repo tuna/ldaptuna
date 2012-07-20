@@ -216,13 +216,17 @@ def start(uri, binddn, bindpw, starttls=True,
         new = parser.parse()
         changes = mkchanges(old, new)
 
-        msg = 'add %d, modify %d, delete %d. Confirm? [Y/n] ' % (
+        msg = 'add %d, modify %d, delete %d. Confirm? [Y/n/q] ' % (
               len(changes['add']), len(changes['modify']),
               len(changes['delete']))
 
-        reply = ask(msg, 'yn', 'y')
+        reply = ask(msg, 'ynq', 'y')
         if reply == 'n':
-            print('LDIF saved in %s' % fname)
+            print('LDIF draft saved in %s' % fname)
+            return 'cancelled'
+        elif reply == 'q':
+            os.remove(fname)
+            print('LDIF draft %s discarded' % fname)
             return 'cancelled'
 
         allgood = True
