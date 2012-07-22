@@ -1,0 +1,8 @@
+dn: cn={name},ou=domains,o=tuna
+objectClass: top
+cn: {name}
+description:
+# Adhoc record
+objectClass: device
+objectClass: ipHost
+ipHostNumber:

@@ -5,8 +5,4 @@ description:
 # Alias
 objectClass: alias
 objectClass: extensibleObject
-aliasedObjectName: cn=CHANGEME,ou=hosts,o=tuna
-# Adhoc record
-#objectClass: device
-#objectClass: ipHost
-#ipHostNumber:
+aliasedObjectName: cn={host},ou=hosts,o=tuna
