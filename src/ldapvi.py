@@ -5,7 +5,6 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 from tempfile import mkstemp
 from getpass import getpass
-from pprint import pprint
 
 import ldap
 import ldap.modlist
@@ -27,6 +26,7 @@ _RETCODES = {
     'operation': 7,
 }
 
+
 class LDIFParser(ldif.LDIFParser):
     def handle(self, dn, entry):
         self._entries[dn] = entry
@@ -46,6 +46,7 @@ class LDIFWriter(ldif.LDIFWriter):
 #        return type_ not in self.force_plain and \
 #               ldif.LDIFWriter._needs_base64_encoding(self, type_, value)
 
+
 def exit(why):
     sys.exit(_RETCODES[why])
 
@@ -60,12 +61,12 @@ def fire_editor(fname):
             check_call([editor, fname])
             return
         except CalledProcessError as e:
-            print('Editor %s failed with return code %d, ' \
-                  'falling back to manual mode' % ( editor, e.returncode))
+            print('Editor %s failed with return code %d, '
+                  'falling back to manual mode' % (editor, e.returncode))
     print('Now modify %s, and press Enter when you are done' % fname)
     if not editor:
-        print('(Hint: set environment variable $EDITOR ' \
-              'to launch automatically)')
+        print('(Hint: set environment variable $EDITOR to'
+              ' launch automatically)')
     raw_input()
 
 
@@ -85,7 +86,7 @@ def mkchanges(old, new):
         'delete': []
     }
     for dn in new.keys():
-        if old.has_key(dn):
+        if dn in old:
             if old[dn] == new[dn]:
                 continue
             modlist = ldap.modlist.modifyModlist(old[dn], new[dn])
@@ -95,7 +96,7 @@ def mkchanges(old, new):
             changes['add'].append((dn, modlist))
 
     for dn in old.keys():
-        if not new.has_key(dn):
+        if dn not in new:
             changes['delete'].append((dn,))
     return changes
 
@@ -143,7 +144,7 @@ def ask(prompt, candidates, default=None):
 
 
 def mktemp(suffix='', prefix='tmp', dir_=None, text=False,
-        mode='w', bufsize=0):
+           mode='w', bufsize=0):
     '''
     Like mkstemp, but returns file object and file name instead of fd and
     file name.
@@ -168,7 +169,7 @@ def start(uri, binddn, bindpw, starttls=True,
     def efmt(e):
         msg = e.args[0]
         s = msg['desc']
-        if msg.has_key('info'):
+        if 'info' not in msg:
             s += ' (%s)' % (msg['info'])
         return s
 
@@ -185,7 +186,7 @@ def start(uri, binddn, bindpw, starttls=True,
     # Make `old`
     if action in ('apply', 'edit', 'list'):
         old = OrderedDict(sort_entries(conn.search_s(
-                  base, SCOPES[scope], filterstr)))
+            base, SCOPES[scope], filterstr)))
     elif action == 'new':
         old = OrderedDict()
 
@@ -288,4 +289,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
