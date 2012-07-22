@@ -1,14 +1,16 @@
 import os
-import sys
 import json
 import base64
 from os.path import dirname
 from getpass import getpass
 from copy import deepcopy
 from argparse import ArgumentParser
-from collections import OrderedDict
+from collections import namedtuple
 
 import ldapvi
+
+
+UnitSpec = namedtuple('UnitSpec', 'single plural key')
 
 
 CONF_FNAME = '.ldaptuna'
@@ -30,13 +32,22 @@ URI_TEMPLATE = 'ldap://{server}.tuna.tsinghua.edu.cn'
 
 SERVERS = ['ldap', 'ldap2']
 
-UNITS = OrderedDict([
-    ('person', 'people'),
-    ('robot', 'robots'),
-    ('domain', 'domains'),
-    ('host', 'hosts'),
-    ('group', 'groups'),
-])
+UNITS = [
+    ('person', 'people', 'uid'),
+    ('robot', 'robots', 'cn'),
+    ('domain', 'domains', 'cn'),
+    ('host', 'hosts', 'cn'),
+    ('group', 'groups', 'cn'),
+]
+
+UNITS = [UnitSpec(*t) for t in UNITS]
+
+UNIT_NAME_MAP = {u.single: u.plural for u in UNITS}
+
+UNIT_NAMES = []
+
+for u in UNITS:
+    UNIT_NAMES.extend([u.single, u.plural])
 
 
 def read_conf(fname):
@@ -60,7 +71,7 @@ def get_bindinfo(user=''):
 
     # Determine binddn and bindpw
     profiles = conf['profiles']
-    if profiles.has_key(user):
+    if user in profiles:
         binddn = profiles[user]['binddn']
         bindpw = profiles[user]['bindpw']
         if bindpw is not None:
@@ -69,7 +80,7 @@ def get_bindinfo(user=''):
         print('Creating profile {user}'.format(user=user))
         default_binddn = DEFAULT_BINDDN_FMT.format(user=user)
         binddn = raw_input('Bind DN (defaulting to {dn}): '.format(
-                              dn=default_binddn)) or default_binddn
+            dn=default_binddn)) or default_binddn
         try:
             bindpw = getpass('Password (Press ^C to avoid saving password.'
                              'Do this when working on a public machine): ')
@@ -110,12 +121,10 @@ def mk_argparser():
         say `%(prog)s <subcommand> -h` to see help for subcommand
         ''')
 
-    units = UNITS.values() + UNITS.keys()
-
     # Parent parser for apply, edit, list and new - the porcelain commands,
     # operating on the level of units and entities
     advcmd = ArgumentParser(add_help=False)
-    advcmd.add_argument('unit', choices=units, metavar='unit',
+    advcmd.add_argument('unit', choices=UNIT_NAMES, metavar='unit',
                         help='''
         which part of LDAP (organizational unit) to operate on. Possible
         values are %(choices)s. Plural/singular pairs like people/person and
@@ -137,7 +146,9 @@ def mk_argparser():
     # This is needed since there is no "insert_argument"...
     _apply_file = ArgumentParser(add_help=False)
     _apply_file.add_argument('file',
-                          help='LDIF file to apply against the search result')
+                             help='''
+        LDIF file to apply against the search results
+                             ''')
 
     def new_subcommand(name, **kwargs):
         return subparsers.add_parser(name, **kwargs)
@@ -178,9 +189,11 @@ def main():
     ldif = filterstr = ''
     # Determine what to do
     subcommand = args.subcommand
-    if args.subcommand in ('apply', 'edit', 'list', 'new'):
+    if subcommand in ('apply', 'edit', 'list', 'new'):
         action = subcommand
-        unit = UNITS.get(args.unit, args.unit)
+        unit = args.unit
+        if unit in UNIT_NAME_MAP.keys():
+            unit = UNIT_NAME_MAP[unit]
         base = 'ou=%s,%s' % (unit, BASEDN)
         if args.entity:
             if unit == 'people':
@@ -188,7 +201,10 @@ def main():
             else:
                 attr = 'cn'
             base = '%s=%s,%s' % (attr, args.entity, base)
-        scope = args.recursive and 'sub' or (args.entity and 'base' or 'one')
+        if 'recursive' in args and args.recursive:
+            scope = 'sub'
+        else:
+            scope = args.entity and 'base' or 'one'
 
         if subcommand == 'new':
             if args.template:
@@ -215,4 +231,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
