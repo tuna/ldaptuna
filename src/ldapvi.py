@@ -217,6 +217,12 @@ def start(uri, binddn, bindpw, starttls=True,
         new = parser.parse()
         changes = mkchanges(old, new)
 
+        if not (changes['add'] or changes['modify'] or changes['delete']):
+            os.remove(fname)
+            print('Nothing changed, discarded LDIF draft %s'
+                  ' and exiting' % fname)
+            return ''
+
         msg = 'add %d, modify %d, delete %d. Confirm? [Y/n/q] ' % (
               len(changes['add']), len(changes['modify']),
               len(changes['delete']))
