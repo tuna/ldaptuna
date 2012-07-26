@@ -169,7 +169,7 @@ def start(uri, binddn, bindpw, starttls=True,
     def efmt(e):
         msg = e.args[0]
         s = msg['desc']
-        if 'info' not in msg:
+        if 'info' in msg:
             s += ' (%s)' % (msg['info'])
         return s
 
