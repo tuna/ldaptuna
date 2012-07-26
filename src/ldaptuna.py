@@ -83,7 +83,7 @@ def get_bindinfo(user=''):
             dn=default_binddn)) or default_binddn
         try:
             bindpw = getpass('Password (Press ^C to avoid saving password.'
-                             'Do this when working on a public machine): ')
+                             ' Do this when working on a public machine): ')
         except KeyboardInterrupt:
             print
             bindpw = None
