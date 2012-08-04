@@ -1,3 +1,4 @@
+import re
 import os
 import json
 import base64
@@ -13,7 +14,7 @@ import ldapvi
 UnitSpec = namedtuple('UnitSpec', 'single plural key')
 
 
-CONF_FNAME = '.ldaptuna'
+DEFAULT_CONF_NAME = '~/.ldaptuna'
 
 CONF_COMMENT = '''WARNING: User credentials are base64-encoded.
 This is only meant to prevent occasional physical eavesdropping; BY NO MEANS
@@ -50,6 +51,11 @@ for u in UNITS:
     UNIT_NAMES.extend([u.single, u.plural])
 
 
+def get_conf_name():
+    return re.sub('^~', os.environ['HOME'],
+                  os.environ.get('LDAPTUNA', DEFAULT_CONF_NAME))
+
+
 def read_conf(fname):
     if os.path.exists(fname):
         f = open(fname)
@@ -63,10 +69,13 @@ def read_conf(fname):
 
 
 def get_bindinfo(user=''):
-    conf_name = os.path.join(os.environ['HOME'], CONF_FNAME)
+    conf_name = get_conf_name()
     conf0, conf = read_conf(conf_name)
     # Determine user
-    user = user or conf['default'] or raw_input('Default user: ')
+    user = user or conf['default'] or raw_input('''\
+You didn't specify -p PROFILE on the command line, and there is no default profile found in your configuration. You need to provide the name of the default profile. When in doubt, use your LDAP username.
+
+Default profile name: ''')
     conf['default'] = conf['default'] or user
 
     # Determine binddn and bindpw
@@ -108,8 +117,8 @@ def mk_argparser():
     Build and return the main ArgumentParser.
     '''
     parser = ArgumentParser(description="TUNA's LDAP tool", prog='ldaptuna')
-    parser.add_argument('-u', '--user', '--as',
-                        help='the short username stored in ~/%s' % CONF_FNAME)
+    parser.add_argument('-p', '--profile',
+                        help='profile stored in ~/%s' % get_conf_name())
     parser.add_argument('-H', '--server', metavar='server', default='ldap',
                         choices=SERVERS,
                         help='''
@@ -222,7 +231,7 @@ def main():
         action = 'list'
         base, scope, filterstr = args.base, args.scope, args.filterstr
 
-    binddn, bindpw = get_bindinfo(args.user)
+    binddn, bindpw = get_bindinfo(args.profile)
 
     ldapvi.start(uri, binddn, bindpw,
                  base=base, scope=scope, filterstr=filterstr,
