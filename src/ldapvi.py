@@ -38,13 +38,73 @@ class LDIFParser(ldif.LDIFParser):
 
 
 class LDIFWriter(ldif.LDIFWriter):
-    pass
-    # XXX Suppressing base64 sometimes breaks the encoding.
-    # This might be a bug of ldif module.
-#    force_plain = set(['description', 'l', 'tunaZhName', 'tunaLdapLogin'])
-#    def _needs_base64_encoding(self, type_, value):
-#        return type_ not in self.force_plain and \
-#               ldif.LDIFWriter._needs_base64_encoding(self, type_, value)
+    _unicode_widths = [
+        (126,    1), (159,    0), (687,     1), (710,   0), (711,   1),
+        (727,    0), (733,    1), (879,     0), (1154,  1), (1161,  0),
+        (4347,   1), (4447,   2), (7467,    1), (7521,  0), (8369,  1),
+        (8426,   0), (9000,   1), (9002,    2), (11021, 1), (12350, 2),
+        (12351,  1), (12438,  2), (12442,   0), (19893, 2), (19967, 1),
+        (55203,  2), (63743,  1), (64106,   2), (65039, 1), (65059, 0),
+        (65131,  2), (65279,  1), (65376,   2), (65500, 1), (65510, 2),
+        (120831, 1), (262141, 2), (1114109, 1),
+    ]
+
+    def _unicode_width(self, o):
+        if o == 0xe or o == 0xf:
+            return 0
+        for num, wid in self._unicode_widths:
+            if o <= num:
+                return wid
+        return 1
+
+    def _count_width(self, line):
+        w = 0
+        for c in line:
+            w += self._unicode_width(ord(c))
+        return w
+
+    def _unfoldLDIFLine(self, line):
+        first = True
+        line = line.decode('utf-8')
+        sum_width = 0
+        s = u''
+        all_width = self._count_width(line)
+        if all_width <= self._cols:
+            self._output_file.write(line.encode('utf-8'))
+            self._output_file.write(self._line_sep)
+            return
+        for c in line:
+            wid = self._unicode_width(ord(c))
+            minus = 0
+            if not first:
+                minus = 1
+            if sum_width + wid > self._cols - minus:
+                if not first:
+                    self._output_file.write(' ')
+                else:
+                    first = False
+                self._output_file.write(s.encode('utf-8'))
+                self._output_file.write(self._line_sep)
+                s = '' + c
+                sum_width = wid
+            else:
+                s += c
+                sum_width += wid
+        if sum_width > 0:
+            self._output_file.write(' ')
+            self._output_file.write(s.encode('utf-8'))
+            self._output_file.write(self._line_sep)
+
+    def _needs_base64_encoding(self, attr_type, attr_value):
+        if attr_type.lower() in self._base64_attrs:
+            return True
+        try:
+            attr_value.decode('utf-8')
+            if '\n' in attr_value or '\r' in attr_value:
+                return True
+            return False
+        except UnicodeDecodeError:
+            return True
 
 
 def exit(why):
