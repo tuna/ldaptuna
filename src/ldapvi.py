@@ -24,6 +24,7 @@ _RETCODES = {
     'cancelled': 3,
     'connect': 4,
     'operation': 7,
+    'search': 10,
 }
 
 
@@ -226,15 +227,8 @@ def start(uri, binddn, bindpw, starttls=True,
     '''
     filterstr = filterstr or '(objectClass=*)'
 
-    def efmt(e):
-        msg = e.args[0]
-        s = msg['desc']
-        if 'info' in msg:
-            s += ' (%s)' % (msg['info'])
-        return s
-
     def error(s, e):
-        sys.stderr.write('Failed to %s:\n    %s\n' % (s, efmt(e)))
+        sys.stderr.write('Failed to %s:\n    %s\n' % (s, e))
 
     try:
         conn = connect(uri, binddn, bindpw, starttls)
@@ -245,8 +239,12 @@ def start(uri, binddn, bindpw, starttls=True,
 
     # Make `old`
     if action in ('apply', 'edit', 'list'):
-        old = OrderedDict(sort_entries(conn.search_s(
-            base, SCOPES[scope], filterstr)))
+        try:
+            old = OrderedDict(sort_entries(conn.search_s(
+                base, SCOPES[scope], filterstr)))
+        except LDAPError as e:
+            error('search', e)
+            return 'search'
     elif action == 'new':
         old = OrderedDict()
 
