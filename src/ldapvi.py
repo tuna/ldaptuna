@@ -39,6 +39,16 @@ class LDIFParser(ldif.LDIFParser):
 
 
 class LDIFWriter(ldif.LDIFWriter):
+    """
+    A LDIFWriter with looser criteria for base64 encoding.
+
+    Data is *not* base64-encoded as long as it is valid UTF-8 and contains no
+    '\n' or '\r'.
+
+    Line splitting behavior is also reworked to break on Unicode codepoint
+    boundaries instead of byte boundaries, *and* based on actual display width
+    instead of byte width.
+    """
     _unicode_widths = [
         (126,    1), (159,    0), (687,     1), (710,   0), (711,   1),
         (727,    0), (733,    1), (879,     0), (1154,  1), (1161,  0),

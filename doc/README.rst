@@ -72,5 +72,6 @@ License
 -------
 
 All files are licensed in the ISC license (2-clause BSD license, with fewer
-words). See ``COPYING`` for a copy of the license.
+words). See ``COPYING`` for a copy of the license, and ``AUTHORS`` for a
+complete list of code authors.
 
