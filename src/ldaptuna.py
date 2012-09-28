@@ -2,6 +2,7 @@ import re
 import os
 import json
 import base64
+from string import Template
 from os.path import dirname
 from getpass import getpass
 from copy import deepcopy
@@ -223,7 +224,12 @@ def main():
                 name = '%s.ldif' % unit
             fname = os.path.join(dirname(dirname(__file__)), 'templates', name)
             if os.path.exists(fname):
-                ldif = open(fname).read().format(name=args.entity or '{name}')
+                with open(fname) as f:
+                    vars = {}
+                    if args.entity:
+                        vars['name'] = args.entity
+                    template = Template(f.read())
+                    ldif = template.safe_substitute(**vars)
             else:
                 ldif = '# Template %s not found, create from scratch' % fname
         elif subcommand == 'apply':

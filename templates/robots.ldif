@@ -1,5 +1,5 @@
-dn: cn={name},ou=robots,o=tuna
-cn: {name}
+dn: cn=$name,ou=robots,o=tuna
+cn: $name
 objectClass: organizationalRole
 objectClass: top
 objectClass: simpleSecurityObject

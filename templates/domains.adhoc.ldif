@@ -1,8 +1,7 @@
-dn: cn={name},ou=domains,o=tuna
+dn: cn=$name,ou=domains,o=tuna
 objectClass: top
-cn: {name}
+cn: $name
 description:
-# Adhoc record
 objectClass: device
 objectClass: ipHost
 ipHostNumber:

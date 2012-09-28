@@ -1,7 +1,7 @@
-dn: cn={name},ou=domains,o=tuna
+dn: cn=$name,ou=domains,o=tuna
 objectClass: top
-cn: {name}
+cn: $name
 description:
 objectClass: alias
 objectClass: extensibleObject
-aliasedObjectName: cn=<host>,ou=hosts,o=tuna
+aliasedObjectName: cn=$host,ou=hosts,o=tuna

@@ -1,12 +1,12 @@
-dn: uid={name},ou=people,o=tuna
+dn: uid=$name,ou=people,o=tuna
 objectClass: tunaPerson
 objectClass: inetOrgPerson
 objectClass: posixAccount
 objectClass: top
 loginShell: /bin/bash
 gidNumber: 1500
-uid: {name}
-homeDirectory: /home/{name}
+uid: $name
+homeDirectory: /home/$name
 cn: 
 uidNumber: 
 givenName: 
@@ -18,7 +18,7 @@ homePostalAddress:
 mobile: 
 tunaZhName: 
 
-dn: ou=contacts,uid={name},ou=people,o=tuna
+dn: ou=contacts,uid=$name,ou=people,o=tuna
 objectClass: organizationalUnit
 ou: contacts
 
