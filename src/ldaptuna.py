@@ -34,21 +34,18 @@ URI_TEMPLATE = 'ldap://{server}.tuna.tsinghua.edu.cn'
 SERVERS = ['ldap', 'ldap2']
 
 UNITS = [
-    ('person', 'people', 'uid'),
-    ('robot', 'robots', 'cn'),
-    ('domain', 'domains', 'cn'),
-    ('host', 'hosts', 'cn'),
-    ('group', 'groups', 'cn'),
+    UnitSpec('person', 'people', 'uid'),
+    UnitSpec('robot', 'robots', 'cn'),
+    UnitSpec('domain', 'domains', 'cn'),
+    UnitSpec('host', 'hosts', 'cn'),
+    UnitSpec('group', 'groups', 'cn'),
 ]
 
-UNITS = [UnitSpec(*t) for t in UNITS]
+UNIT_MAP = {u.plural: u for u in UNITS}
 
-UNIT_NAME_MAP = {u.single: u.plural for u in UNITS}
+UNIT_CNAME = {u.single: u.plural for u in UNITS}
 
-UNIT_NAMES = []
-
-for u in UNITS:
-    UNIT_NAMES.extend([u.single, u.plural])
+UNIT_NAMES = UNIT_CNAME.keys() + UNIT_CNAME.values()
 
 
 def get_conf_name():
@@ -110,6 +107,14 @@ Default profile name: ''')
     if bindpw is None:
         bindpw = getpass('Password (one time): ')
     return binddn, bindpw
+
+
+def map_to_dn(basedn, unit, entity):
+    dn = 'ou=%s,%s' % (unit, basedn)
+    if entity:
+        attr = UNIT_MAP[unit].key
+        dn = '%s=%s,%s' % (attr, entity, dn)
+    return dn
 
 
 def mk_argparser():
@@ -201,15 +206,11 @@ def main():
     if subcommand in ('apply', 'edit', 'list', 'new'):
         action = subcommand
         unit = args.unit
-        if unit in UNIT_NAME_MAP.keys():
-            unit = UNIT_NAME_MAP[unit]
-        base = 'ou=%s,%s' % (unit, BASEDN)
-        if args.entity:
-            if unit == 'people':
-                attr = 'uid'
-            else:
-                attr = 'cn'
-            base = '%s=%s,%s' % (attr, args.entity, base)
+        # Canonize unit name
+        if unit in UNIT_CNAME.keys():
+            unit = UNIT_CNAME[unit]
+        base = map_to_dn(BASEDN, unit, args.entity)
+
         if 'recursive' in args and args.recursive:
             scope = 'sub'
         else:
