@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 from tempfile import mkstemp
 from getpass import getpass
+from cStringIO import StringIO
 
 import ldap
 import ldap.modlist
@@ -21,9 +22,9 @@ SCOPES = {
 _RETCODES = {
     '': 0,
     'cmdline': 2,
-    'cancelled': 3,
+    'cancel': 3,
     'connect': 4,
-    'operation': 7,
+    'operate': 7,
     'search': 10,
 }
 
@@ -227,6 +228,146 @@ def mktemp(suffix='', prefix='tmp', dir_=None, text=False,
     return fh, fname
 
 
+class UserCancel(Exception):
+    pass
+
+
+class ActionError(Exception):
+    def __init__(self, what, how, e):
+        self.what = what
+        self.how = how
+        self.e = e
+        self.message = 'Failed to %s%s:\n    %s' % (what, how, e)
+
+    def __str__(self):
+        return self.message
+
+
+class Action(object):
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+    def connect(self):
+        try:
+            self.conn = connect(
+                self.uri, self.binddn, self.bindpw, self.starttls)
+        except LDAPError as e:
+            raise ActionError('connect', ' to %s as %s %s' % (
+                self.uri, self.binddn, self.starttls * 'with TLS'), e)
+
+    def mktemp(self):
+        return mktemp('.ldif', 'ldaptuna')
+
+    def make_entries(self):
+        try:
+            entries = OrderedDict(sort_entries(self.conn.search_s(
+                self.base, SCOPES[self.scope], self.filterstr)))
+        except LDAPError as e:
+            raise ActionError('search', ' in %s' % self.base, e)
+        return entries
+
+    def write_entries(self, stream, entries):
+        writer = LDIFWriter(stream)
+        for dn, attrs in entries.items():
+            writer.unparse(dn, attrs)
+
+    def read_apply(self, stream, old):
+        parser = LDIFParser(stream)
+        new = parser.parse()
+        changes = mkchanges(old, new)
+
+        if not (changes['add'] or changes['modify'] or changes['delete']):
+            print('Nothing changed.')
+            return
+
+        msg = 'add %d, modify %d, delete %d. Confirm? [Y/n/q] ' % (
+              len(changes['add']), len(changes['modify']),
+              len(changes['delete']))
+
+        reply = ask(msg, 'ynq', 'y')
+        if reply == 'n':
+            raise UserCancel()
+        elif reply == 'q':
+            return
+
+        for op in 'add', 'modify', 'delete':
+            func = getattr(self.conn, '%s_s' % op)
+            for change in changes[op]:
+                try:
+                    func(*change)
+                except ldap.LDAPError as e:
+                    raise ActionError('operate',
+                                      ' to %s %s' % (op, change[0]), e)
+
+    def edit_read_apply(self, fname, old):
+        fire_editor(fname)
+        stream = open(fname)
+        try:
+            self.read_apply(stream, old)
+        except:
+            print('LDIF draft saved in %s' % fname)
+            raise
+        finally:
+            stream.close()
+
+        os.unlink(fname)
+        print('Removed %s.' % fname)
+
+    def work(self, base, scope, filterstr, ldif):
+        raise NotImplementedError
+
+
+actions = {}
+
+
+def register(cls):
+    actions[cls.cmd] = cls
+
+
+@register
+class Apply(Action):
+    cmd = 'apply'
+
+    def work(self):
+        old = self.make_entries()
+        self.read_apply(StringIO(self.ldif), old)
+
+
+@register
+class List(Action):
+    cmd = 'list'
+
+    def work(self):
+        entries = self.make_entries()
+        self.write_entries(sys.stdout, entries)
+
+
+@register
+class Edit(Action):
+    cmd = 'edit'
+
+    def work(self):
+        old = self.make_entries()
+
+        stream, fname = self.mktemp()
+        self.write_entries(stream, old)
+        stream.close()
+
+        self.edit_read_apply(fname, old)
+
+
+@register
+class New(Action):
+    cmd = 'new'
+
+    def work(self):
+        stream, fname = self.mktemp()
+        stream.write(self.ldif)
+        stream.close()
+
+        self.edit_read_apply(fname, OrderedDict())
+
+
 def start(uri, binddn, bindpw, starttls=True,
           base='', scope='sub', filterstr='',
           action='edit', ldif=''):
@@ -237,90 +378,20 @@ def start(uri, binddn, bindpw, starttls=True,
     '''
     filterstr = filterstr or '(objectClass=*)'
 
-    def error(s, e):
-        sys.stderr.write('Failed to %s:\n    %s\n' % (s, e))
+    actor = actions[action](uri=uri, binddn=binddn, bindpw=bindpw,
+                            starttls=starttls, base=base, scope=scope,
+                            filterstr=filterstr, action=action, ldif=ldif)
 
     try:
-        conn = connect(uri, binddn, bindpw, starttls)
-    except LDAPError as e:
-        error('connect to %s as %s %s' % (
-              uri, binddn, starttls * 'with TLS'), e)
-        return 'connect'
+        actor.connect()
+        actor.work()
+    except ActionError as e:
+        print(str(e))
+        return e.what
+    except UserCancel:
+        return 'cancel'
 
-    # Make `old`
-    if action in ('apply', 'edit', 'list'):
-        try:
-            old = OrderedDict(sort_entries(conn.search_s(
-                base, SCOPES[scope], filterstr)))
-        except LDAPError as e:
-            error('search', e)
-            return 'search'
-    elif action == 'new':
-        old = OrderedDict()
-
-    # Prepair LDIF output file
-    if action in ('edit', 'new'):
-        fldif, fname = mktemp('.ldif')
-    elif action == 'list':
-        fldif = sys.stdout
-
-    # Write LDIF
-    if action in ('edit', 'list'):
-        if action == 'list':
-            fldif = sys.stdout
-        writer = LDIFWriter(fldif)
-
-        for dn, attrs in old.items():
-            writer.unparse(dn, attrs)
-    elif action in ('apply', 'new'):
-        fldif.write(ldif)
-
-    # Read and apply LDIF
-    if action in ('apply', 'edit', 'new'):
-        fldif.close()
-        fire_editor(fname)
-        fldif = open(fname)
-
-        parser = LDIFParser(fldif)
-        new = parser.parse()
-        changes = mkchanges(old, new)
-
-        if not (changes['add'] or changes['modify'] or changes['delete']):
-            os.remove(fname)
-            print('Nothing changed, discarded LDIF draft %s'
-                  ' and exiting' % fname)
-            return ''
-
-        msg = 'add %d, modify %d, delete %d. Confirm? [Y/n/q] ' % (
-              len(changes['add']), len(changes['modify']),
-              len(changes['delete']))
-
-        reply = ask(msg, 'ynq', 'y')
-        if reply == 'n':
-            print('LDIF draft saved in %s' % fname)
-            return 'cancelled'
-        elif reply == 'q':
-            os.remove(fname)
-            print('LDIF draft %s discarded' % fname)
-            return 'cancelled'
-
-        allgood = True
-        for op in 'add', 'modify', 'delete':
-            func = getattr(conn, '%s_s' % op)
-            for change in changes[op]:
-                try:
-                    func(*change)
-                except ldap.LDAPError as e:
-                    error('%s %s' % (op, change[0]), e)
-                    allgood = False
-
-        if allgood:
-            os.unlink(fname)
-            print('Done.')
-            return ''
-        else:
-            print('LDIF saved in %s' % fname)
-            return 'operation'
+    return ''
 
 
 def main():
