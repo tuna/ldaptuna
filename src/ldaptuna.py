@@ -2,6 +2,7 @@ import re
 import os
 import json
 import base64
+from sys import stderr
 from string import Template
 from os.path import dirname
 from getpass import getpass
@@ -49,6 +50,12 @@ UNIT_CNAME = {u.single: u.plural for u in UNITS}
 UNIT_NAMES = UNIT_CNAME.keys() + UNIT_CNAME.values()
 
 
+def myinput(prompt=''):
+    '''Like raw_input, but prints the prompt to stderr.'''
+    stderr.write(prompt)
+    return raw_input()
+
+
 def get_conf_name():
     return re.sub('^~', os.environ['HOME'],
                   os.environ.get('LDAPTUNA', DEFAULT_CONF_NAME))
@@ -60,17 +67,16 @@ def read_conf(fname):
         conf = json.load(f)
         conf0 = deepcopy(conf)
     else:
-        os.close(os.open(fname, os.O_WRONLY | os.O_CREAT, 0600))
         conf0 = {}
         conf = {'default': '', 'profiles': {}, '_comment': CONF_COMMENT}
     return conf0, conf
 
 
-def get_bindinfo(user=''):
+def get_bindinfo(user='', nop=False):
     conf_name = get_conf_name()
     conf0, conf = read_conf(conf_name)
     # Determine user
-    user = user or conf['default'] or raw_input('''\
+    user = user or conf['default'] or myinput('''\
 You didn't specify -p PROFILE on the command line, and there is no default profile found in your configuration. You need to provide the name of the default profile. When in doubt, use your LDAP username.
 
 Default profile name: ''')
@@ -84,19 +90,19 @@ Default profile name: ''')
         if bindpw is not None:
             bindpw = base64.decodestring(bindpw)
     else:
-        print('Creating profile {user}'.format(user=user))
+        print >>stderr, 'Creating profile {user}'.format(user=user)
         default_binddn = DEFAULT_BINDDN_FMT.format(user=user)
-        binddn = raw_input('Bind DN (defaulting to {dn}): '.format(
+        binddn = myinput('Bind DN (defaulting to {dn}): '.format(
             dn=default_binddn)) or default_binddn
         try:
             bindpw = getpass('Password (Press ^C to avoid saving password.'
                              ' Do this when working on a public machine): ')
         except KeyboardInterrupt:
-            print
+            print >>stderr
             bindpw = None
 
         if bindpw is not None:
-            raw_input('Be sure to read the comment in {conf}. '
+            myinput('Be sure to read the comment in {conf}. '
                       'Press Enter now...'.format(conf=conf_name))
 
         profiles[user] = {
@@ -104,8 +110,12 @@ Default profile name: ''')
             'bindpw': bindpw and base64.encodestring(bindpw),
         }
     if conf != conf0:
+        if not os.path.exists(conf_name):
+            os.close(os.open(conf_name, os.O_WRONLY | os.O_CREAT, 0600))
         json.dump(conf, open(conf_name, 'w'), indent=2)
-    if bindpw is None:
+    if bindpw is None and not nop:
+        print >>stderr,\
+            "Using profile '{0}'. (binding dn: {1})".format(user, binddn)
         bindpw = getpass('Password (one time): ')
     return binddn, bindpw
 
@@ -193,6 +203,11 @@ def mk_argparser():
     search.add_argument('base')
     search.add_argument('filterstr', nargs='?', default='')
 
+    # nop - trigger profile creation
+    new_subcommand('nop', description='''
+        Do nothing but triggering profile creation
+        ''')
+
     return parser
 
 
@@ -238,11 +253,12 @@ def main():
         action = 'list'
         base, scope, filterstr = args.base, args.scope, args.filterstr
 
-    binddn, bindpw = get_bindinfo(args.profile)
+    binddn, bindpw = get_bindinfo(args.profile, subcommand == 'nop')
 
-    ldapvi.start(uri, binddn, bindpw,
-                 base=base, scope=scope, filterstr=filterstr,
-                 action=action, ldif=ldif)
+    if subcommand != 'nop':
+        ldapvi.start(uri, binddn, bindpw,
+                     base=base, scope=scope, filterstr=filterstr,
+                     action=action, ldif=ldif)
 
 
 if __name__ == '__main__':
