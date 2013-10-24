@@ -142,6 +142,28 @@ def fire_editor(fname):
     raw_input()
 
 
+memoized_split_dn = {}
+def split_dn(dn):
+    if dn not in memoized_split_dn:
+        li = dn.split(',')
+        li.reverse()
+        memoized_split_dn[dn] = li
+    return memoized_split_dn[dn]
+
+
+def dn_cmp(dn1, dn2):
+    return cmp(split_dn(dn1), split_dn(dn2))
+
+
+def sort_entries(entries, reverse=False):
+    '''
+    Sort LDAP entries by DN, ensuring parent elements appear before their
+    children.
+    '''
+    entries.sort(lambda a, b: dn_cmp(a[0], b[0]), reverse=reverse)
+    return entries
+
+
 def mkchanges(old, new):
     '''
     Generate add, modify and delete modlists by diffing two LDAP entry lists.
@@ -170,21 +192,9 @@ def mkchanges(old, new):
     for dn in old.keys():
         if dn not in new:
             changes['delete'].append((dn,))
-    return changes
-
-
-def sort_entries(entries):
-    '''
-    Sort LDAP entries by DN, ensuring parent elements appear before their
-    children.
-    '''
-    _dnli = {}
-    for dn, attrs in entries:
-        li = dn.split(',')
-        li.reverse()
-        _dnli[dn] = li
-    entries.sort(lambda a, b: cmp(_dnli[a[0]], _dnli[b[0]]))
-    return entries
+    # Abuse sort_entries since we also happen to have dn at changes[x][0]...
+    sort_entries(changes['add'])
+    sort_entries(changes['delete'], reverse=True)
 
 
 def connect(uri, binddn, bindpw, starttls=True):
