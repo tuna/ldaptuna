@@ -28,15 +28,11 @@ objectClass: top
 # member: uid=xiaq,ou=people,o=tuna
 member: 
 
-# Optional sudoer group for Debian, needs the following /etc/sudoers.d/wheel:
-# %wheel ALL=(root) ALL
-# NOTE: Debian creates `sudoers` as a local (/etc/group) group when installing
-# the sudo package so we have to name the LDAP group differently. On Redhat
-# the system creates a local group named `wheel`. In that case, name the LDAP
-# group `sudoers`.
-dn: cn=wheel,ou=groups,cn=$name,ou=hosts,o=tuna
+# Optional sudoer group, needs the following /etc/sudoers.d/tuna-sudo:
+# %tuna-sudo ALL=(root) ALL
+dn: cn=tuna-sudo,ou=groups,cn=$name,ou=hosts,o=tuna
 gidNumber: 1501
-cn: wheel
+cn: tuna-sudo
 objectClass: tunaGroup
 objectClass: top
 member: 
