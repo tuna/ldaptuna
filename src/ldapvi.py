@@ -2,7 +2,7 @@ import os
 import sys
 from subprocess import check_call, CalledProcessError
 from argparse import ArgumentParser
-from collections import OrderedDict
+from collections import namedtuple, OrderedDict
 from tempfile import mkstemp
 from getpass import getpass
 from cStringIO import StringIO
@@ -164,6 +164,8 @@ def sort_entries(entries, reverse=False):
     return entries
 
 
+Changes = namedtuple('Changes', 'add modify delete')
+
 def mkchanges(old, new):
     '''
     Generate add, modify and delete modlists by diffing two LDAP entry lists.
@@ -174,27 +176,23 @@ def mkchanges(old, new):
     conn.delete_s respectively, where conn is an instance of
     ldap.ldapobject.LDAPObject.
     '''
-    changes = {
-        'add': [],
-        'modify': [],
-        'delete': []
-    }
+    changes = Changes([], [], [])
     for dn in new.keys():
         if dn in old:
             if old[dn] == new[dn]:
                 continue
             modlist = ldap.modlist.modifyModlist(old[dn], new[dn])
-            changes['modify'].append((dn, modlist))
+            changes.modify.append((dn, modlist))
         else:
             modlist = ldap.modlist.addModlist(new[dn])
-            changes['add'].append((dn, modlist))
+            changes.add.append((dn, modlist))
 
     for dn in old.keys():
         if dn not in new:
-            changes['delete'].append((dn,))
+            changes.delete.append((dn,))
     # Abuse sort_entries since we also happen to have dn at changes[x][0]...
-    sort_entries(changes['add'])
-    sort_entries(changes['delete'], reverse=True)
+    sort_entries(changes.add)
+    sort_entries(changes.delete, reverse=True)
 
 
 def connect(uri, binddn, bindpw, starttls=True):
@@ -286,13 +284,13 @@ class Action(object):
         new = parser.parse()
         changes = mkchanges(old, new)
 
-        if not (changes['add'] or changes['modify'] or changes['delete']):
+        if not (changes.add or changes.modify or changes.delete):
             print('Nothing changed.')
             return
 
         msg = 'add %d, modify %d, delete %d. Confirm? [Y/n/q] ' % (
-              len(changes['add']), len(changes['modify']),
-              len(changes['delete']))
+              len(changes.add), len(changes.modify),
+              len(changes.delete))
 
         reply = ask(msg, 'ynq', 'y')
         if reply == 'n':
@@ -302,7 +300,7 @@ class Action(object):
 
         for op in 'add', 'modify', 'delete':
             func = getattr(self.conn, '%s_s' % op)
-            for change in changes[op]:
+            for change in getattr(changes, op):
                 try:
                     func(*change)
                 except ldap.LDAPError as e:
