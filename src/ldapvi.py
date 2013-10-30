@@ -193,6 +193,7 @@ def mkchanges(old, new):
     # Abuse sort_entries since we also happen to have dn at changes[x][0]...
     sort_entries(changes.add)
     sort_entries(changes.delete, reverse=True)
+    return changes
 
 
 def connect(uri, binddn, bindpw, starttls=True):
