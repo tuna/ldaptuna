@@ -39,6 +39,7 @@ UNITS = [
     UnitSpec('person', 'people', 'uid'),
     UnitSpec('robot', 'robots', 'cn'),
     UnitSpec('domain', 'domains', 'cn'),
+    UnitSpec('dnsdomain2', 'domains', 'dc'),
     UnitSpec('host', 'hosts', 'cn'),
     UnitSpec('group', 'groups', 'cn'),
 ]
