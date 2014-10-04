@@ -44,11 +44,12 @@ UNITS = [
     UnitSpec('group', 'groups', 'cn'),
 ]
 
-UNIT_MAP = {u.plural: u for u in UNITS}
+UNIT_MAP = {u.single: u for u in UNITS}
 
 UNIT_CNAME = {u.single: u.plural for u in UNITS}
 
-UNIT_NAMES = UNIT_CNAME.keys() + UNIT_CNAME.values()
+# UNIT_NAMES = UNIT_CNAME.keys() + UNIT_CNAME.values()
+UNIT_NAMES = UNIT_CNAME.keys()
 
 
 def myinput(prompt=''):
@@ -122,7 +123,9 @@ Default profile name: ''')
 
 
 def map_to_dn(basedn, unit, entity):
-    dn = 'ou=%s,%s' % (unit, basedn)
+    _unit = UNIT_CNAME[unit] \
+        if unit in UNIT_CNAME.keys() else unit
+    dn = 'ou=%s,%s' % (_unit, basedn)
     if entity:
         attr = UNIT_MAP[unit].key
         dn = '%s=%s,%s' % (attr, entity, dn)
@@ -224,8 +227,8 @@ def main():
         action = subcommand
         unit = args.unit
         # Canonize unit name
-        if unit in UNIT_CNAME.keys():
-            unit = UNIT_CNAME[unit]
+        # if unit in UNIT_CNAME.keys():
+        #     unit = UNIT_CNAME[unit]
         base = map_to_dn(BASEDN, unit, args.entity)
 
         if 'recursive' in args and args.recursive:
